@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Envíos Analítica Web</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: cabecera con selector de equipo · columna "día elegido" | calendario del mes | detalle del día · guía de correos abajo */
+:root {
+  --bg: #f3f5f9; --panel: #ffffff; --panel-2: #e9edf4; --line: #d3d9e4;
+  --fg: #172033; --muted: #5b6579; --accent: #2457d6; --accent-soft: #dfe8fd; --on-accent: #ffffff;
+  --t-diario: #2457d6; --t-corte: #b86e00; --t-semanal: #7a45c9; --t-evento: #c4245e; --t-critico: #d22c2c;
+  --t-diario-bg: #e2eafd; --t-corte-bg: #fbeed8; --t-semanal-bg: #efe6fb; --t-evento-bg: #fbe3ec; --t-critico-bg: #fde3e3;
+  --evento-dia: #fdf0f4;
+  --f-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --f-body: "Barlow", "Segoe UI", system-ui, sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "Consolas", monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0e131d; --panel: #161d2b; --panel-2: #1d2638; --line: #2b3549;
+  --fg: #e8ecf4; --muted: #96a0b5; --accent: #7ea2ff; --accent-soft: #23324f; --on-accent: #0e131d;
+  --t-diario: #8eaeff; --t-corte: #f0b75c; --t-semanal: #b998f0; --t-evento: #f27aa5; --t-critico: #ff7b7b;
+  --t-diario-bg: #1f2b47; --t-corte-bg: #3a2d16; --t-semanal-bg: #2c2242; --t-evento-bg: #3d1f2c; --t-critico-bg: #431e1e;
+  --evento-dia: #24172a; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0e131d; --panel: #161d2b; --panel-2: #1d2638; --line: #2b3549;
+  --fg: #e8ecf4; --muted: #96a0b5; --accent: #7ea2ff; --accent-soft: #23324f; --on-accent: #0e131d;
+  --t-diario: #8eaeff; --t-corte: #f0b75c; --t-semanal: #b998f0; --t-evento: #f27aa5; --t-critico: #ff7b7b;
+  --t-diario-bg: #1f2b47; --t-corte-bg: #3a2d16; --t-semanal-bg: #2c2242; --t-evento-bg: #3d1f2c; --t-critico-bg: #431e1e;
+  --evento-dia: #24172a; color-scheme: dark }
+
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--fg); font: 15px/1.5 var(--f-body); }
+.wrap { max-width: 1320px; margin: 0 auto; padding-block: 20px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 18px }
+h1, h2, h3 { font-family: var(--f-display); margin: 0; text-wrap: balance; letter-spacing: .01em }
+.eyebrow { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-weight: 600 }
+button { font: inherit; color: inherit; cursor: pointer }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums }
+
+/* cabecera */
+.top { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; justify-content: space-between }
+.top h1 { font-size: clamp(30px, 4vw, 42px); font-weight: 700; line-height: 1 }
+.top p { margin: 4px 0 0; color: var(--muted) }
+.acciones { display: flex; gap: 8px; align-items: center }
+.btn { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 14px }
+.btn:hover { border-color: var(--accent) }
+.equipos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center }
+.chip { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 6px 14px; font-weight: 600; font-size: 14px }
+.chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent) }
+.aviso { border-radius: 12px; padding: 12px 16px; display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+  background: var(--accent-soft); border: 1px solid var(--line) }
+.aviso.evento { background: var(--t-evento-bg); border-color: var(--t-evento) }
+.aviso strong { font-family: var(--f-display); font-size: 19px; letter-spacing: .02em }
+.aviso.evento strong { color: var(--t-evento) }
+
+/* tres columnas */
+.grid { display: grid; grid-template-columns: 300px minmax(0, 1fr) 340px; gap: 18px; align-items: start }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-width: 0 }
+.dia-grande { display: flex; gap: 14px; align-items: center }
+.dia-grande .num { font-family: var(--f-display); font-size: 64px; font-weight: 700; line-height: .9 }
+.dia-grande .txt { font-family: var(--f-display); font-size: 22px; line-height: 1.1; font-weight: 600 }
+.lista { display: grid; gap: 10px; margin-top: 16px }
+.item { display: grid; grid-template-columns: 52px 1fr; gap: 10px; align-items: start; padding: 10px; border-radius: 10px; background: var(--panel-2) }
+.item .hora { font-family: var(--f-mono); font-size: 13px; padding-top: 2px; color: var(--muted) }
+.item b { display: block; font-weight: 600 }
+.item small { color: var(--muted); display: block; line-height: 1.35 }
+.vacio { color: var(--muted); padding: 10px 0 }
+.semana { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin-top: 16px }
+.semana button { border: 1px solid var(--line); background: var(--panel); border-radius: 8px; padding: 6px 2px; display: grid; gap: 2px; text-align: center; font-size: 12px }
+.semana button b { font-family: var(--f-display); font-size: 17px }
+.semana button[aria-current="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent) }
+.semana .ev { color: var(--t-evento) }
+
+/* calendario */
+.cal-cab { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px }
+.cal-cab h2 { font-size: 28px; text-transform: capitalize }
+.nav { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--line); background: var(--panel); font-size: 18px; line-height: 1 }
+.leyenda { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-bottom: 10px; font-size: 13px; color: var(--muted) }
+.leyenda span::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; background: var(--c); vertical-align: -1px }
+.cal-scroll { overflow-x: auto }
+.cal { display: grid; grid-template-columns: repeat(5, minmax(96px, 1fr)) repeat(2, minmax(44px, .45fr)); gap: 6px; min-width: 620px }
+.cal .dsem { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; padding: 0 4px }
+.celda { min-height: 96px; border: 1px solid var(--line); border-radius: 10px; padding: 6px; background: var(--panel); text-align: left; display: flex; flex-direction: column; gap: 4px }
+.celda.fuera { opacity: .35 }
+.celda.finde { background: var(--panel-2); min-height: 96px }
+.celda.evento { background: var(--evento-dia); border-color: var(--t-evento) }
+.celda.hoy .n { background: var(--accent); color: var(--on-accent); border-radius: 6px; padding: 0 6px }
+.celda[aria-current="true"] { box-shadow: 0 0 0 2px var(--accent) }
+.celda .n { font-family: var(--f-display); font-weight: 700; font-size: 18px; align-self: flex-start }
+.mini { font-size: 11.5px; line-height: 1.2; border-radius: 5px; padding: 3px 5px; background: var(--bg-t); color: var(--c-t); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis }
+.t-Diario { --c-t: var(--t-diario); --bg-t: var(--t-diario-bg) }
+.t-Corte { --c-t: var(--t-corte); --bg-t: var(--t-corte-bg) }
+.t-Semanal { --c-t: var(--t-semanal); --bg-t: var(--t-semanal-bg) }
+.t-Evento { --c-t: var(--t-evento); --bg-t: var(--t-evento-bg) }
+.t-Crítico { --c-t: var(--t-critico); --bg-t: var(--t-critico-bg) }
+
+/* detalle */
+.detalle h2 { font-size: 24px }
+.correo { border: 1px solid var(--line); border-left: 4px solid var(--c-t); border-radius: 10px; padding: 12px 14px; display: grid; gap: 8px; margin-top: 12px }
+.correo .cab { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; flex-wrap: wrap }
+.correo h3 { font-size: 20px }
+.etq { font-size: 12px; font-weight: 600; border-radius: 999px; padding: 2px 9px; background: var(--bg-t); color: var(--c-t) }
+.correo dl { margin: 0; display: grid; gap: 6px }
+.correo dt { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600 }
+.correo dd { margin: 0 }
+.asunto { font-family: var(--f-mono); font-size: 12.5px; background: var(--panel-2); border-radius: 6px; padding: 4px 8px; overflow-wrap: anywhere }
+.nota { font-size: 14px; background: var(--panel-2); border-radius: 8px; padding: 6px 10px }
+
+/* guía */
+.guia h2 { font-size: 28px }
+.guia > p { color: var(--muted); margin: 4px 0 0; max-width: 70ch }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-top: 14px }
+.responder { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; align-items: start }
+.responder ol { margin: 8px 0 0; padding-left: 20px; display: grid; gap: 6px }
+pre.plantilla { margin: 8px 0 0; white-space: pre-wrap; background: var(--panel-2); border-radius: 10px; padding: 12px; font: 13px/1.5 var(--f-mono) }
+.estado { color: var(--muted); padding: 40px 0; text-align: center }
+footer { color: var(--muted); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px }
+
+@media (max-width: 1100px) { .grid { grid-template-columns: 1fr 1fr } .grid .cal-panel { grid-column: 1 / -1; order: -1 } }
+@media (max-width: 720px) { .grid, .responder { grid-template-columns: 1fr } }
+@media (prefers-reduced-motion: no-preference) { .celda, .chip, .btn { transition: border-color .15s, background .15s } }
+</style>
+</head>
+<body>
+
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Envíos Analítica Web</h1>
+      <p>Qué correos te llegan cada día, qué revisar y cómo responder.</p>
+    </div>
+    <div class="acciones">
+      <button class="btn" id="copiar" type="button">Copiar link de mi equipo</button>
+      <button class="btn" id="tema" type="button" aria-label="Cambiar tema claro u oscuro">◐ Tema</button>
+    </div>
+  </header>
+  <div>
+    <div class="eyebrow">Tu equipo</div>
+    <div class="equipos" id="equipos" role="group" aria-label="Elegir equipo"></div>
+  </div>
+  <div id="aviso"></div>
+  <div id="app"><p class="estado">Cargando el horario de envíos…</p></div>
+  <footer><span>Fuente: datos/envios.xlsx</span><span>Analítica Web · KS Depor</span></footer>
+</div>
+
+<script>
+const DIAS = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+const MESES = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+const S = { datos: null, equipo: "todos", sel: null, mes: null };
+const $ = (id) => document.getElementById(id);
+const esc = (t) => String(t ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const deIso = (s) => { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); };
+
+function fecha(v) {
+  if (v instanceof Date) return iso(new Date(v.getFullYear(), v.getMonth(), v.getDate()));
+  if (typeof v === "number") return iso(new Date(Math.round((v - 25569) * 864e5) + new Date().getTimezoneOffset() * 6e4));
+  const t = String(v || "").trim();
+  let m = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); if (m) return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  m = t.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); if (m) return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  return "";
+}
+function hora(v) {
+  if (v instanceof Date) return `${String(v.getHours()).padStart(2,"0")}:${String(v.getMinutes()).padStart(2,"0")}`;
+  if (typeof v === "number") { const min = Math.round(v * 1440) % 1440; return `${String(Math.floor(min/60)).padStart(2,"0")}:${String(min%60).padStart(2,"0")}`; }
+  const m = String(v || "").match(/(\d{1,2}):(\d{2})/); return m ? `${m[1].padStart(2,"0")}:${m[2]}` : String(v || "");
+}
+const norm = (t) => String(t || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+
+async function cargar() {
+  let hoja;
+  try {
+    const r = await fetch("datos/envios.xlsx", { cache: "no-store" });
+    if (!r.ok) throw new Error("sin xlsx");
+    const wb = XLSX.read(await r.arrayBuffer(), { cellDates: true });
+    hoja = (n) => wb.Sheets[n] ? XLSX.utils.sheet_to_json(wb.Sheets[n], { defval: "" }) : [];
+  } catch (e) {  // respaldo: la misma plantilla exportada a JSON
+    const r = await fetch("datos/envios.json", { cache: "no-store" });
+    if (!r.ok) throw new Error("no se encontró datos/envios.xlsx");
+    const j = await r.json(); hoja = (n) => j[n] || [];
+  }
+  const correos = {};
+  for (const c of hoja("Correos")) if (c["Código"]) correos[String(c["Código"]).trim()] = c;
+  const fila = (r) => ({ hora: hora(r["Hora"]), codigo: String(r["Código"]).trim(), equipos: String(r["Equipos"] || "Todos"), nota: r["Nota"] || "" });
+  return {
+    correos,
+    semana: hoja("Semana tipo").filter(r => r["Día"]).map(r => ({ dia: norm(r["Día"]), ...fila(r) })),
+    especial: hoja("Calendario especial").filter(r => r["Fecha"]).map(r => ({ fecha: fecha(r["Fecha"]), ...fila(r) })),
+    avisos: hoja("Avisos").filter(r => r["Título"]).map(r => ({ desde: fecha(r["Desde"]), hasta: fecha(r["Hasta"]) || "9999", tipo: r["Tipo"], titulo: r["Título"], texto: r["Texto"] })),
+    equipos: hoja("Equipos").filter(r => r["Clave"]).map(r => ({ clave: norm(r["Clave"]), nombre: r["Equipo"], marcas: r["Marcas"] }))
+  };
+}
+
+function aplicaA(eq, equipo) {
+  if (equipo === "todos") return true;
+  const t = norm(eq);
+  return t === "todos" || t.split(",").map(x => x.trim()).includes(equipo);
+}
+function enviosDe(f) {
+  const d = deIso(f), D = S.datos;
+  if (d.getDay() === 0 || d.getDay() === 6) return [];
+  const esp = D.especial.filter(r => r.fecha === f);
+  const filas = esp.length ? esp : D.semana.filter(r => r.dia === norm(DIAS[d.getDay()]));
+  return filas.filter(r => r.codigo !== "SIN-ENVIO" && aplicaA(r.equipos, S.equipo) && D.correos[r.codigo])
+    .map(r => ({ ...r, c: D.correos[r.codigo] })).sort((a, b) => a.hora.localeCompare(b.hora));
+}
+const avisosDe = (f) => S.datos.avisos.filter(a => a.desde <= f && f <= a.hasta);
+const esEvento = (f) => avisosDe(f).some(a => norm(a.tipo) === "evento");
+const tipoClase = (c) => "t-" + (String(c["Tipo"] || "Diario").trim() || "Diario");
+const nombreEquipo = () => S.equipo === "todos" ? "Todos los equipos" : (S.datos.equipos.find(e => e.clave === S.equipo)?.nombre || S.equipo);
+
+function pintarEquipos() {
+  const lista = [{ clave: "todos", nombre: "Todos" }, ...S.datos.equipos];
+  $("equipos").innerHTML = lista.map(e => `<button type="button" class="chip" data-eq="${esc(e.clave)}" aria-pressed="${e.clave === S.equipo}">${esc(e.nombre)}</button>`).join("");
+}
+function pintarAviso() {
+  const a = avisosDe(S.sel).sort((x, y) => (norm(y.tipo) === "evento") - (norm(x.tipo) === "evento"))[0];
+  $("aviso").innerHTML = a ? `<div class="aviso ${norm(a.tipo) === "evento" ? "evento" : ""}"><strong>${esc(a.titulo)}</strong><span>${esc(a.texto)}</span></div>` : "";
+}
+function lunes(f) { const d = deIso(f); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d; }
+
+function pintar() {
+  pintarEquipos(); pintarAviso();
+  const hoy = iso(new Date()), sel = deIso(S.sel), envios = enviosDe(S.sel);
+  const finde = sel.getDay() === 0 || sel.getDay() === 6;
+  // columna izquierda
+  const l = lunes(S.sel), sem = [];
+  for (let i = 0; i < 5; i++) { const d = new Date(l); d.setDate(l.getDate() + i); sem.push(iso(d)); }
+  const izq = `<section class="panel" aria-label="Día elegido">
+    <div class="eyebrow">${S.sel === hoy ? "Hoy" : "Día elegido"} · ${esc(nombreEquipo())}</div>
+    <div class="dia-grande"><div class="num">${sel.getDate()}</div><div class="txt">${DIAS[sel.getDay()]}<br>${MESES[sel.getMonth()]} ${sel.getFullYear()}</div></div>
+    <div class="lista">${envios.length ? envios.map(e => `<div class="item"><span class="hora">${esc(e.hora)}</span><div><b>${esc(e.c["Correo"])}</b><small>${esc(e.c["Qué hacer"])}</small></div></div>`).join("")
+      : `<p class="vacio">${finde ? "Fin de semana: no hay envíos." : "No hay envíos este día."}</p>`}</div>
+    <div class="eyebrow" style="margin-top:18px">Esta semana</div>
+    <div class="semana">${sem.map(f => { const d = deIso(f), n = enviosDe(f).length;
+      return `<button type="button" data-dia="${f}" aria-current="${f === S.sel}" class="${esEvento(f) ? "ev" : ""}"><span>${DIAS[d.getDay()].slice(0,3)}</span><b>${d.getDate()}</b><span>${n} ${n === 1 ? "correo" : "correos"}</span></button>`; }).join("")}</div>
+  </section>`;
+  // calendario
+  const [y, m] = S.mes, ini = new Date(y, m, 1), off = (ini.getDay() + 6) % 7, dias = new Date(y, m + 1, 0).getDate();
+  let celdas = ["Lun","Mar","Mié","Jue","Vie","Sáb","Dom"].map(d => `<div class="dsem">${d}</div>`).join("");
+  const total = Math.ceil((off + dias) / 7) * 7;
+  for (let i = 0; i < total; i++) {
+    const d = new Date(y, m, i - off + 1), f = iso(d), fw = d.getDay() === 0 || d.getDay() === 6;
+    const cls = ["celda", d.getMonth() !== m ? "fuera" : "", fw ? "finde" : "", esEvento(f) && !fw ? "evento" : "", f === hoy ? "hoy" : ""].join(" ");
+    const lst = enviosDe(f);
+    celdas += `<button type="button" class="${cls}" data-dia="${f}" aria-current="${f === S.sel}" aria-label="${DIAS[d.getDay()]} ${d.getDate()}: ${lst.length} correos"><span class="n">${d.getDate()}</span>${
+      lst.map(e => `<span class="mini ${tipoClase(e.c)}" title="${esc(e.hora + " " + e.c["Correo"])}">${esc(e.hora)} ${esc(e.c["Correo"])}</span>`).join("")}</button>`;
+  }
+  const tipos = [["Diario","--t-diario"],["Corte","--t-corte"],["Semanal","--t-semanal"],["Evento","--t-evento"]];
+  const cal = `<section class="panel cal-panel" aria-label="Calendario de envíos">
+    <div class="cal-cab"><button class="nav" type="button" data-mes="-1" aria-label="Mes anterior">‹</button><h2>${MESES[m]} ${y}</h2><button class="nav" type="button" data-mes="1" aria-label="Mes siguiente">›</button></div>
+    <div class="leyenda">${tipos.map(([t, v]) => `<span style="--c:var(${v})">${t}</span>`).join("")}<span style="--c:var(--evento-dia)">Día de evento</span></div>
+    <div class="cal-scroll"><div class="cal">${celdas}</div></div>
+  </section>`;
+  // detalle
+  const det = `<section class="panel detalle" aria-label="Detalle de los correos">
+    <div class="eyebrow">Qué hacer con cada correo</div><h2>${DIAS[sel.getDay()]} ${sel.getDate()} de ${MESES[sel.getMonth()]}</h2>
+    ${envios.length ? envios.map(e => tarjeta(e.c, e)).join("") : `<p class="vacio">Sin envíos este día.</p>`}
+  </section>`;
+  // guía
+  const guia = `<section class="panel guia" aria-label="Guía de correos">
+    <h2>Guía de correos</h2><p>Todos los correos que puedes recibir de Analítica Web. El asunto te dice cuál es.</p>
+    <div class="cards">${Object.values(S.datos.correos).map(c => tarjeta(c)).join("")}</div>
+  </section>
+  <section class="panel responder" aria-label="Cómo responder">
+    <div><h2>Cómo responder</h2>
+      <ol><li>Responde al mismo correo, manteniendo a todos en copia.</li>
+      <li>Por cada producto: <b>SKU</b> (el padre o el de la talla, cualquiera sirve), <b>tienda</b> y <b>motivo</b>.</li>
+      <li>Si no debe seguir apareciendo, di <b>hasta qué fecha</b> (o "sin fecha" si es definitivo).</li>
+      <li>Si hay stock y la tienda no lo muestra, no pidas excepción: pide a la tienda que lo corrija. Se cierra solo.</li></ol></div>
+    <div><div class="eyebrow">Plantilla para copiar</div>
+      <pre class="plantilla" id="plantilla">SKU:
+Tienda: (Coliseum / Web propia / Falabella / Oechsle / Ripley)
+Tipo: (Destallado / Sin tallas / Descuento / Precio)
+Motivo:
+Hasta: (dd/mm/aaaa o "sin fecha")</pre>
+      <button class="btn" id="copiar-plantilla" type="button" style="margin-top:8px">Copiar plantilla</button></div>
+  </section>`;
+  $("app").innerHTML = `<div class="grid">${izq}${cal}${det}</div><div style="display:grid;gap:18px;margin-top:18px">${guia}</div>`;
+}
+function tarjeta(c, e) {
+  return `<article class="correo ${tipoClase(c)}">
+    <div class="cab"><h3>${esc(c["Correo"])}</h3><span class="etq">${e ? esc(e.hora) + " · " : ""}${esc(c["Tipo"])}</span></div>
+    ${c["Asunto (cómo llega)"] ? `<div class="asunto">${esc(c["Asunto (cómo llega)"])}</div>` : ""}
+    ${e && e.nota ? `<div class="nota">${esc(e.nota)}</div>` : ""}
+    <dl><dt>Qué es</dt><dd>${esc(c["Qué es"])}</dd><dt>Qué revisar</dt><dd>${esc(c["Qué revisar"])}</dd>
+    <dt>Qué hacer</dt><dd>${esc(c["Qué hacer"])}</dd><dt>Cómo responder</dt><dd>${esc(c["Cómo responder"])}</dd>
+    <dt>Plazo</dt><dd>${esc(c["Plazo de respuesta"])}</dd></dl></article>`;
+}
+
+function leerHash() {
+  const h = norm(decodeURIComponent(location.hash.replace(/^#/, "")).replace(/^equipo=/, ""));
+  S.equipo = S.datos && S.datos.equipos.some(e => e.clave === h) ? h : "todos";
+}
+function copiar(texto, boton, ok) {
+  const listo = () => { const t = boton.textContent; boton.textContent = ok; setTimeout(() => boton.textContent = t, 1600); };
+  try { navigator.clipboard.writeText(texto).then(listo, () => prompt0(texto)); } catch (e) { prompt0(texto); }
+}
+function prompt0(t) { const p = $("plantilla"); if (p) { const r = document.createRange(); r.selectNodeContents(p); getSelection().removeAllRanges(); getSelection().addRange(r); } }
+
+document.addEventListener("click", (ev) => {
+  const b = ev.target.closest("button"); if (!b || !S.datos) return;
+  if (b.dataset.eq) { S.equipo = b.dataset.eq; history.replaceState(null, "", S.equipo === "todos" ? location.pathname : "#" + S.equipo); pintar(); }
+  else if (b.dataset.dia) { S.sel = b.dataset.dia; const d = deIso(S.sel); S.mes = [d.getFullYear(), d.getMonth()]; pintar(); }
+  else if (b.dataset.mes) { let [y, m] = S.mes; m += Number(b.dataset.mes); if (m < 0) { m = 11; y--; } if (m > 11) { m = 0; y++; } S.mes = [y, m]; pintar(); }
+  else if (b.id === "copiar") { const base = location.href.split("#")[0]; copiar(S.equipo === "todos" ? base : base + "#" + S.equipo, b, "Link copiado"); }
+  else if (b.id === "copiar-plantilla") copiar($("plantilla").textContent, b, "Plantilla copiada");
+});
+$("tema").addEventListener("click", () => {
+  const r = document.documentElement, actual = r.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  r.dataset.theme = actual === "dark" ? "light" : "dark";
+  try { localStorage.setItem("envios-tema", r.dataset.theme); } catch (e) {}
+});
+try { const t = localStorage.getItem("envios-tema"); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+addEventListener("hashchange", () => { if (S.datos) { leerHash(); pintar(); } });
+
+(async () => {
+  const hoy = new Date(); S.sel = iso(hoy); S.mes = [hoy.getFullYear(), hoy.getMonth()];
+  try { S.datos = await cargar(); leerHash(); pintar(); }
+  catch (e) { $("app").innerHTML = `<p class="estado">No se pudo leer el horario (${esc(e.message)}). Revisa que datos/envios.xlsx esté subido junto a esta página.</p>`; }
+})();
+</script>
+
+</body>
+</html>
